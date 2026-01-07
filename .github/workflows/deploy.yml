@@ -135,7 +135,7 @@ jobs:
           SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=laravel-aws-app-ecs" "Name=vpc-id,Values=$VPC_ID" --query "SecurityGroups[0].GroupId" --output text --region $AWS_REGION)
           TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --names laravel-aws-app-tg --region $AWS_REGION --query 'TargetGroups[0].TargetGroupArn' --output text)
           
-          # Create the service
+          # Create the service without load balancer for now
           aws ecs create-service \
             --cluster $CLUSTER_NAME \
             --service-name $SERVICE_NAME \
@@ -143,7 +143,6 @@ jobs:
             --desired-count 1 \
             --launch-type FARGATE \
             --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_IDS],securityGroups=[$SECURITY_GROUP_ID],assignPublicIp=ENABLED}" \
-            --load-balancers "targetGroupArn=$TARGET_GROUP_ARN,containerName=laravel-app,containerPort=80" \
             --region $AWS_REGION
         else
           echo "Updating existing ECS service $SERVICE_NAME..."
@@ -238,7 +237,7 @@ jobs:
           SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=laravel-aws-app-ecs" "Name=vpc-id,Values=$VPC_ID" --query "SecurityGroups[0].GroupId" --output text --region $AWS_REGION)
           TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --names laravel-aws-app-tg --region $AWS_REGION --query 'TargetGroups[0].TargetGroupArn' --output text)
           
-          # Create the service
+          # Create the service without load balancer for now
           aws ecs create-service \
             --cluster $CLUSTER_NAME \
             --service-name $SERVICE_NAME \
@@ -246,7 +245,6 @@ jobs:
             --desired-count 2 \
             --launch-type FARGATE \
             --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_IDS],securityGroups=[$SECURITY_GROUP_ID],assignPublicIp=ENABLED}" \
-            --load-balancers "targetGroupArn=$TARGET_GROUP_ARN,containerName=laravel-app,containerPort=80" \
             --region $AWS_REGION
         else
           echo "Updating existing ECS service $SERVICE_NAME..."
