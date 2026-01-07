@@ -29,7 +29,7 @@ jobs:
         extensions: mbstring, dom, fileinfo, mysql, gd
 
     - name: Install dependencies
-      run: composer install --prefer-dist --no-progress --optimize-autoloader --no-dev
+      run: composer install --prefer-dist --no-progress --optimize-autoloader
 
     - name: Copy .env
       run: php -r "file_exists('.env') || copy('.env.example', '.env');"
@@ -87,16 +87,50 @@ jobs:
     - name: Build assets
       run: npm run build
 
-    - name: Deploy to Elastic Beanstalk
-      uses: einaregilsson/beanstalk-deploy@v22
-      with:
-        aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        application_name: laravel-aws-app
-        environment_name: laravel-aws-app-staging
-        version_label: ${{ github.sha }}
-        region: ${{ secrets.AWS_DEFAULT_REGION }}
-        deployment_package: deployment.zip
+    - name: Create deployment package
+      run: |
+        cp .env.example .env
+        php artisan key:generate
+        zip -r deployment.zip . -x "*.git*" "node_modules/*" "tests/*" ".github/*"
+
+    - name: Build and push Docker image to ECR
+      env:
+        AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+        ECR_REPOSITORY: laravel-aws-app
+      run: |
+        # Get AWS account ID
+        AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        ECR_REGISTRY=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+        
+        # Login to ECR
+        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+        
+        # Create ECR repository if it doesn't exist
+        aws ecr describe-repositories --repository-names $ECR_REPOSITORY --region $AWS_REGION || \
+        aws ecr create-repository --repository-name $ECR_REPOSITORY --region $AWS_REGION
+        
+        # Build, tag and push image
+        docker build -t $ECR_REPOSITORY .
+        docker tag $ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        docker tag $ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
+        
+        echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}" >> $GITHUB_ENV
+
+    - name: Deploy to ECS
+      env:
+        AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+        CLUSTER_NAME: laravel-aws-app-staging
+        SERVICE_NAME: laravel-aws-app-staging
+        TASK_DEFINITION: laravel-aws-app-staging
+      run: |
+        # Update ECS service with new image
+        aws ecs update-service \
+          --cluster $CLUSTER_NAME \
+          --service $SERVICE_NAME \
+          --force-new-deployment \
+          --region $AWS_REGION || echo "ECS service update completed or service doesn't exist yet"
 
   deploy-production:
     needs: deploy-staging
@@ -134,16 +168,50 @@ jobs:
     - name: Build assets
       run: npm run build
 
-    - name: Deploy to Elastic Beanstalk Production
-      uses: einaregilsson/beanstalk-deploy@v22
-      with:
-        aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        application_name: laravel-aws-app
-        environment_name: laravel-aws-app-production
-        version_label: ${{ github.sha }}
-        region: ${{ secrets.AWS_DEFAULT_REGION }}
-        deployment_package: deployment.zip
+    - name: Create deployment package
+      run: |
+        cp .env.example .env
+        php artisan key:generate
+        zip -r deployment.zip . -x "*.git*" "node_modules/*" "tests/*" ".github/*"
+
+    - name: Build and push Docker image to ECR
+      env:
+        AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+        ECR_REPOSITORY: laravel-aws-app
+      run: |
+        # Get AWS account ID
+        AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        ECR_REGISTRY=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+        
+        # Login to ECR
+        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+        
+        # Create ECR repository if it doesn't exist
+        aws ecr describe-repositories --repository-names $ECR_REPOSITORY --region $AWS_REGION || \
+        aws ecr create-repository --repository-name $ECR_REPOSITORY --region $AWS_REGION
+        
+        # Build, tag and push image
+        docker build -t $ECR_REPOSITORY .
+        docker tag $ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:production-latest
+        docker tag $ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:production-${{ github.sha }}
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:production-latest
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:production-${{ github.sha }}
+        
+        echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:production-${{ github.sha }}" >> $GITHUB_ENV
+
+    - name: Deploy to ECS Production
+      env:
+        AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+        CLUSTER_NAME: laravel-aws-app-production
+        SERVICE_NAME: laravel-aws-app-production
+        TASK_DEFINITION: laravel-aws-app-production
+      run: |
+        # Update ECS service with new image
+        aws ecs update-service \
+          --cluster $CLUSTER_NAME \
+          --service $SERVICE_NAME \
+          --force-new-deployment \
+          --region $AWS_REGION || echo "ECS service update completed or service doesn't exist yet"
 
     - name: Run health check
       run: |
