@@ -121,16 +121,38 @@ jobs:
     - name: Deploy to ECS
       env:
         AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
-        CLUSTER_NAME: laravel-aws-app-staging
+        CLUSTER_NAME: laravel-aws-app
         SERVICE_NAME: laravel-aws-app-staging
-        TASK_DEFINITION: laravel-aws-app-staging
+        TASK_DEFINITION: laravel-aws-app
       run: |
-        # Update ECS service with new image
-        aws ecs update-service \
-          --cluster $CLUSTER_NAME \
-          --service $SERVICE_NAME \
-          --force-new-deployment \
-          --region $AWS_REGION || echo "ECS service update completed or service doesn't exist yet"
+        # Check if service exists, create if not
+        if ! aws ecs describe-services --cluster $CLUSTER_NAME --services $SERVICE_NAME --region $AWS_REGION --query 'services[0].serviceName' --output text | grep -q $SERVICE_NAME; then
+          echo "Creating ECS service $SERVICE_NAME..."
+          
+          # Get VPC and subnet info
+          VPC_ID=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=true" --query "Vpcs[0].VpcId" --output text --region $AWS_REGION)
+          SUBNET_IDS=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --query "Subnets[*].SubnetId" --output text --region $AWS_REGION)
+          SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=laravel-aws-app-ecs" "Name=vpc-id,Values=$VPC_ID" --query "SecurityGroups[0].GroupId" --output text --region $AWS_REGION)
+          TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --names laravel-aws-app-tg --region $AWS_REGION --query 'TargetGroups[0].TargetGroupArn' --output text)
+          
+          # Create the service
+          aws ecs create-service \
+            --cluster $CLUSTER_NAME \
+            --service-name $SERVICE_NAME \
+            --task-definition $TASK_DEFINITION:1 \
+            --desired-count 1 \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_IDS],securityGroups=[$SECURITY_GROUP_ID],assignPublicIp=ENABLED}" \
+            --load-balancers "targetGroupArn=$TARGET_GROUP_ARN,containerName=laravel-app,containerPort=80" \
+            --region $AWS_REGION
+        else
+          echo "Updating existing ECS service $SERVICE_NAME..."
+          aws ecs update-service \
+            --cluster $CLUSTER_NAME \
+            --service $SERVICE_NAME \
+            --force-new-deployment \
+            --region $AWS_REGION
+        fi
 
   deploy-production:
     needs: deploy-staging
@@ -202,16 +224,38 @@ jobs:
     - name: Deploy to ECS Production
       env:
         AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
-        CLUSTER_NAME: laravel-aws-app-production
+        CLUSTER_NAME: laravel-aws-app
         SERVICE_NAME: laravel-aws-app-production
-        TASK_DEFINITION: laravel-aws-app-production
+        TASK_DEFINITION: laravel-aws-app
       run: |
-        # Update ECS service with new image
-        aws ecs update-service \
-          --cluster $CLUSTER_NAME \
-          --service $SERVICE_NAME \
-          --force-new-deployment \
-          --region $AWS_REGION || echo "ECS service update completed or service doesn't exist yet"
+        # Check if service exists, create if not
+        if ! aws ecs describe-services --cluster $CLUSTER_NAME --services $SERVICE_NAME --region $AWS_REGION --query 'services[0].serviceName' --output text | grep -q $SERVICE_NAME; then
+          echo "Creating ECS service $SERVICE_NAME..."
+          
+          # Get VPC and subnet info  
+          VPC_ID=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=true" --query "Vpcs[0].VpcId" --output text --region $AWS_REGION)
+          SUBNET_IDS=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --query "Subnets[*].SubnetId" --output text --region $AWS_REGION)
+          SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=laravel-aws-app-ecs" "Name=vpc-id,Values=$VPC_ID" --query "SecurityGroups[0].GroupId" --output text --region $AWS_REGION)
+          TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --names laravel-aws-app-tg --region $AWS_REGION --query 'TargetGroups[0].TargetGroupArn' --output text)
+          
+          # Create the service
+          aws ecs create-service \
+            --cluster $CLUSTER_NAME \
+            --service-name $SERVICE_NAME \
+            --task-definition $TASK_DEFINITION:1 \
+            --desired-count 2 \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_IDS],securityGroups=[$SECURITY_GROUP_ID],assignPublicIp=ENABLED}" \
+            --load-balancers "targetGroupArn=$TARGET_GROUP_ARN,containerName=laravel-app,containerPort=80" \
+            --region $AWS_REGION
+        else
+          echo "Updating existing ECS service $SERVICE_NAME..."
+          aws ecs update-service \
+            --cluster $CLUSTER_NAME \
+            --service $SERVICE_NAME \
+            --force-new-deployment \
+            --region $AWS_REGION
+        fi
 
     - name: Run health check
       run: |
