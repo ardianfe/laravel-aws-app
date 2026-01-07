@@ -1,0 +1,51 @@
+*.log
+.DS_Store
+.env
+.env.backup
+.env.production
+.env.testing
+.phpactor.json
+.phpunit.result.cache
+/.fleet
+/.idea
+/.nova
+/.phpunit.cache
+/.vscode
+/.zed
+/auth.json
+/node_modules
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+/vendor
+Homestead.json
+Homestead.yaml
+Thumbs.db
+
+# AWS deployment files (keep configurations but ignore secrets)
+.aws/
+*.pem
+*.key
+AWSCLIV2.pkg
+
+# IDE and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Docker
+.docker/
+
+# Testing
+coverage/
+.coverage
+phpunit.xml
+
+# Local development
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
