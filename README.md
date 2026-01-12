@@ -96,45 +96,30 @@ The application uses SQLite for testing by default. Test database configuration 
 php artisan test --recreate-databases
 ```
 
-## AWS Deployment
+## 🚀 AWS ECS Fargate Deployment
 
-### Infrastructure
+**Single Platform Strategy**: ECS Fargate with Application Load Balancer
 
-The application uses the following AWS services:
+### Infrastructure Stack:
+- **ECS Fargate**: Serverless containers with auto-scaling
+- **Application Load Balancer**: Traffic distribution + health checks  
+- **ECR**: Docker registry
+- **RDS MySQL**: Managed database
+- **CloudWatch**: Logging and monitoring
 
-- **EC2**: Application hosting
-- **RDS MySQL**: Database
-- **S3**: File storage
-- **CloudFront**: CDN
-- **ALB**: Load balancer
-- **Route 53**: DNS
-
-### Deployment Options
-
-#### 1. AWS Elastic Beanstalk
-
-```bash
-# Install EB CLI
-pip install awsebcli
-
-# Initialize Elastic Beanstalk
-eb init
-
-# Deploy
-eb deploy
+### Architecture:
+```
+Internet → ALB → ECS Fargate (1-100 containers) → RDS MySQL
 ```
 
-#### 2. AWS App Runner
+**Live API**: http://laravel-aws-app-alb-1787439313.ap-southeast-1.elb.amazonaws.com
 
-Deploy directly from GitHub with `apprunner.yaml` configuration.
-
-#### 3. ECS with Fargate
-
-Use the provided Docker configuration with ECS.
-
-#### 4. EC2 Manual Deployment
-
-Use the deployment scripts in the `scripts/` directory.
+### Deployment Process:
+1. **Push to main** → Triggers GitHub Actions
+2. **Docker Build** → PHP 8.3 + Nginx + Supervisor  
+3. **ECR Push** → Tagged with commit SHA
+4. **ECS Update** → Rolling deployment (zero downtime)
+5. **Health Checks** → ALB validates containers
 
 ### Environment Variables
 

@@ -131,9 +131,8 @@ jobs:
         fi
 
   deploy-production:
-    needs: deploy-staging
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: startsWith(github.ref, 'refs/tags/v')
     environment: production
     
     steps:
@@ -179,14 +178,17 @@ jobs:
         aws ecr describe-repositories --repository-names $ECR_REPOSITORY --region $AWS_REGION || \
         aws ecr create-repository --repository-name $ECR_REPOSITORY --region $AWS_REGION
         
+        # Extract tag name
+        TAG_NAME=${GITHUB_REF#refs/tags/}
+        
         # Build, tag and push image
         docker build -t $ECR_REPOSITORY .
+        docker tag $ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:production-$TAG_NAME
         docker tag $ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:production-latest
-        docker tag $ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:production-${{ github.sha }}
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:production-$TAG_NAME
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:production-latest
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:production-${{ github.sha }}
         
-        echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:production-${{ github.sha }}" >> $GITHUB_ENV
+        echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:production-$TAG_NAME" >> $GITHUB_ENV
 
     - name: Deploy to ECS Production
       env:
@@ -195,27 +197,29 @@ jobs:
         SERVICE_NAME: laravel-aws-app-production
         TASK_DEFINITION: laravel-aws-app
       run: |
+        # Use known working infrastructure values for production
+        SUBNET_1="subnet-0903459d034f25487"
+        SUBNET_2="subnet-0281fdb975f4d0565"
+        SECURITY_GROUP_ID="sg-088ec101df958bb59"
+        TARGET_GROUP_ARN="arn:aws:elasticloadbalancing:ap-southeast-1:975628797176:targetgroup/laravel-aws-app-tg/a8c36acd30b4e81e"
+        
         # Check if service exists, create if not
         if ! aws ecs describe-services --cluster $CLUSTER_NAME --services $SERVICE_NAME --region $AWS_REGION --query 'services[0].serviceName' --output text | grep -q $SERVICE_NAME; then
-          echo "Creating ECS service $SERVICE_NAME..."
+          echo "Creating ECS production service $SERVICE_NAME..."
           
-          # Get VPC and subnet info  
-          VPC_ID=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=true" --query "Vpcs[0].VpcId" --output text --region $AWS_REGION)
-          SUBNET_IDS=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --query "Subnets[*].SubnetId" --output text --region $AWS_REGION)
-          SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=laravel-aws-app-ecs" "Name=vpc-id,Values=$VPC_ID" --query "SecurityGroups[0].GroupId" --output text --region $AWS_REGION)
-          TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --names laravel-aws-app-tg --region $AWS_REGION --query 'TargetGroups[0].TargetGroupArn' --output text)
-          
-          # Create the service without load balancer for now
+          # Create the service with load balancer
           aws ecs create-service \
             --cluster $CLUSTER_NAME \
             --service-name $SERVICE_NAME \
             --task-definition $TASK_DEFINITION:1 \
             --desired-count 2 \
             --launch-type FARGATE \
-            --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_IDS],securityGroups=[$SECURITY_GROUP_ID],assignPublicIp=ENABLED}" \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_1,$SUBNET_2],securityGroups=[$SECURITY_GROUP_ID],assignPublicIp=ENABLED}" \
+            --load-balancers "targetGroupArn=$TARGET_GROUP_ARN,containerName=laravel-app,containerPort=80" \
+            --health-check-grace-period-seconds 300 \
             --region $AWS_REGION
         else
-          echo "Updating existing ECS service $SERVICE_NAME..."
+          echo "Updating existing ECS production service $SERVICE_NAME..."
           aws ecs update-service \
             --cluster $CLUSTER_NAME \
             --service $SERVICE_NAME \
@@ -223,9 +227,15 @@ jobs:
             --region $AWS_REGION
         fi
 
-    - name: Run health check
+    - name: Wait for production deployment
       run: |
-        echo "Waiting for deployment to complete..."
-        sleep 60
-        curl -f ${{ secrets.PRODUCTION_URL }}/health || exit 1
-        echo "Health check passed!"
+        echo "Waiting for production deployment to stabilize..."
+        aws ecs wait services-stable --cluster laravel-aws-app --services laravel-aws-app-production --region $AWS_REGION
+        echo "Production deployment completed!"
+
+    - name: Run production health check
+      run: |
+        echo "Running production health check..."
+        sleep 30
+        curl -f http://laravel-aws-app-alb-1787439313.ap-southeast-1.elb.amazonaws.com/health || exit 1
+        echo "Production health check passed!"
