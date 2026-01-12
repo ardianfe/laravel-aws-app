@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install PHP extensions
-RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd sockets
+RUN docker-php-ext-install pdo_mysql pdo_sqlite mbstring exif pcntl bcmath gd sockets
 
 # Get latest Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -94,5 +94,18 @@ RUN mkdir -p /var/log/nginx && \
 # Expose port 80
 EXPOSE 80
 
+# Create startup script
+COPY <<EOF /usr/local/bin/start.sh
+#!/bin/bash
+# Create SQLite database if it doesn't exist
+touch /tmp/database.sqlite
+chmod 664 /tmp/database.sqlite
+
 # Start supervisor
-CMD ["/usr/bin/supervisord"]
+exec /usr/bin/supervisord
+EOF
+
+RUN chmod +x /usr/local/bin/start.sh
+
+# Start with custom script
+CMD ["/usr/local/bin/start.sh"]
