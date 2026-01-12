@@ -25,7 +25,7 @@ jobs:
     - name: Setup PHP
       uses: shivammathur/setup-php@v2
       with:
-        php-version: '8.2'
+        php-version: '8.3'
         extensions: mbstring, dom, fileinfo, mysql, gd
 
     - name: Install dependencies
@@ -70,7 +70,7 @@ jobs:
     - name: Setup PHP
       uses: shivammathur/setup-php@v2
       with:
-        php-version: '8.2'
+        php-version: '8.3'
 
     - name: Install Composer dependencies
       run: composer install --optimize-autoloader --no-dev
@@ -172,7 +172,7 @@ jobs:
     - name: Setup PHP
       uses: shivammathur/setup-php@v2
       with:
-        php-version: '8.2'
+        php-version: '8.3'
 
     - name: Install Composer dependencies
       run: composer install --optimize-autoloader --no-dev
