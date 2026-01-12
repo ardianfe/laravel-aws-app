@@ -1,0 +1,68 @@
+{
+  "family": "laravel-aws-app",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::975628797176:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "laravel-app",
+      "image": "975628797176.dkr.ecr.ap-southeast-1.amazonaws.com/laravel-aws-app:production-latest",
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "protocol": "tcp"
+        }
+      ],
+      "essential": true,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/laravel-aws-app",
+          "awslogs-region": "ap-southeast-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "environment": [
+        {"name": "APP_NAME", "value": "Laravel"},
+        {"name": "APP_ENV", "value": "production"},
+        {"name": "APP_DEBUG", "value": "false"},
+        {"name": "APP_KEY", "value": "base64:HempxvRm1cXt2XV0CmaNiRXSf28sETPyD+JyawAq55M="},
+        {"name": "APP_URL", "value": "http://laravel-aws-app-alb-1787439313.ap-southeast-1.elb.amazonaws.com"},
+        {"name": "LOG_CHANNEL", "value": "stderr"},
+        {"name": "LOG_DEPRECATIONS_CHANNEL", "value": "null"},
+        {"name": "LOG_LEVEL", "value": "info"},
+        {"name": "DB_CONNECTION", "value": "mysql"},
+        {"name": "DB_HOST", "value": "laravel-aws-app-db.cluster-xyz.ap-southeast-1.rds.amazonaws.com"},
+        {"name": "DB_PORT", "value": "3306"},
+        {"name": "DB_DATABASE", "value": "laravel"},
+        {"name": "DB_USERNAME", "value": "laravel"},
+        {"name": "BROADCAST_DRIVER", "value": "log"},
+        {"name": "CACHE_DRIVER", "value": "file"},
+        {"name": "FILESYSTEM_DISK", "value": "local"},
+        {"name": "QUEUE_CONNECTION", "value": "sync"},
+        {"name": "SESSION_DRIVER", "value": "file"},
+        {"name": "SESSION_LIFETIME", "value": "120"},
+        {"name": "MEMCACHED_HOST", "value": "127.0.0.1"},
+        {"name": "REDIS_HOST", "value": "127.0.0.1"},
+        {"name": "REDIS_PASSWORD", "value": "null"},
+        {"name": "REDIS_PORT", "value": "6379"},
+        {"name": "MAIL_MAILER", "value": "log"},
+        {"name": "MAIL_HOST", "value": "localhost"},
+        {"name": "MAIL_PORT", "value": "2525"},
+        {"name": "MAIL_USERNAME", "value": "null"},
+        {"name": "MAIL_PASSWORD", "value": "null"},
+        {"name": "MAIL_ENCRYPTION", "value": "null"},
+        {"name": "MAIL_FROM_ADDRESS", "value": "hello@example.com"},
+        {"name": "MAIL_FROM_NAME", "value": "Laravel"}
+      ],
+      "secrets": [
+        {
+          "name": "DB_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-1:975628797176:secret:laravel-db-password-xyz:password::"
+        }
+      ]
+    }
+  ]
+}
