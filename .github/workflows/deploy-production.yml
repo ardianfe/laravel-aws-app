@@ -1,0 +1,125 @@
+name: Deploy to Production
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.3'
+
+    - name: Install Composer dependencies
+      run: composer install --optimize-autoloader --no-dev
+
+    - name: Skip frontend assets (API only)
+      run: echo "Laravel API backend - no frontend assets needed"
+
+    - name: Create deployment package
+      run: |
+        cp .env.example .env
+        php artisan key:generate
+        zip -r deployment.zip . -x "*.git*" "node_modules/*" "tests/*" ".github/*"
+
+    - name: Build and push Docker image to ECR
+      env:
+        AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+        ECR_REPOSITORY: laravel-aws-app
+      run: |
+        # Get AWS account ID
+        AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        ECR_REGISTRY=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+        
+        # Login to ECR
+        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+        
+        # Create ECR repository if it doesn't exist
+        aws ecr describe-repositories --repository-names $ECR_REPOSITORY --region $AWS_REGION || \
+        aws ecr create-repository --repository-name $ECR_REPOSITORY --region $AWS_REGION
+        
+        # Extract tag name
+        TAG_NAME=${GITHUB_REF#refs/tags/}
+        
+        # Build, tag and push image
+        docker build -t $ECR_REPOSITORY .
+        docker tag $ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:production-$TAG_NAME
+        docker tag $ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:production-latest
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:production-$TAG_NAME
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:production-latest
+        
+        echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:production-$TAG_NAME" >> $GITHUB_ENV
+
+    - name: Register production task definition
+      run: |
+        aws ecs register-task-definition \
+          --cli-input-json file://task-definition-production.json \
+          --region ${{ secrets.AWS_DEFAULT_REGION }}
+
+    - name: Deploy to ECS Production
+      env:
+        AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+        CLUSTER_NAME: laravel-aws-app
+        SERVICE_NAME: laravel-aws-app-production
+        TASK_DEFINITION: laravel-aws-app
+      run: |
+        # Use known working infrastructure values for production
+        SUBNET_1="subnet-0903459d034f25487"
+        SUBNET_2="subnet-0281fdb975f4d0565"
+        SECURITY_GROUP_ID="sg-088ec101df958bb59"
+        TARGET_GROUP_ARN="arn:aws:elasticloadbalancing:ap-southeast-1:975628797176:targetgroup/laravel-aws-app-tg/a8c36acd30b4e81e"
+        
+        # Get latest task definition revision
+        TASK_REVISION=$(aws ecs describe-task-definition --task-definition $TASK_DEFINITION --region $AWS_REGION --query 'taskDefinition.revision' --output text)
+        
+        # Check if service exists, create if not
+        if ! aws ecs describe-services --cluster $CLUSTER_NAME --services $SERVICE_NAME --region $AWS_REGION --query 'services[0].serviceName' --output text | grep -q $SERVICE_NAME; then
+          echo "Creating ECS production service $SERVICE_NAME..."
+          
+          # Create the service with load balancer
+          aws ecs create-service \
+            --cluster $CLUSTER_NAME \
+            --service-name $SERVICE_NAME \
+            --task-definition $TASK_DEFINITION:$TASK_REVISION \
+            --desired-count 2 \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_1,$SUBNET_2],securityGroups=[$SECURITY_GROUP_ID],assignPublicIp=ENABLED}" \
+            --load-balancers "targetGroupArn=$TARGET_GROUP_ARN,containerName=laravel-app,containerPort=80" \
+            --health-check-grace-period-seconds 300 \
+            --region $AWS_REGION
+        else
+          echo "Updating existing ECS production service $SERVICE_NAME..."
+          aws ecs update-service \
+            --cluster $CLUSTER_NAME \
+            --service $SERVICE_NAME \
+            --task-definition $TASK_DEFINITION:$TASK_REVISION \
+            --region $AWS_REGION
+        fi
+
+    - name: Wait for production deployment
+      run: |
+        echo "Waiting for production deployment to stabilize..."
+        aws ecs wait services-stable --cluster laravel-aws-app --services laravel-aws-app-production --region ${{ secrets.AWS_DEFAULT_REGION }}
+        echo "Production deployment completed!"
+
+    - name: Run production health check
+      run: |
+        echo "Running production health check..."
+        sleep 30
+        curl -f http://laravel-aws-app-alb-1787439313.ap-southeast-1.elb.amazonaws.com/health || exit 1
+        echo "Production health check passed!"
