@@ -55,13 +55,8 @@
         {"name": "MAIL_PASSWORD", "value": "null"},
         {"name": "MAIL_ENCRYPTION", "value": "null"},
         {"name": "MAIL_FROM_ADDRESS", "value": "hello@example.com"},
-        {"name": "MAIL_FROM_NAME", "value": "Laravel"}
-      ],
-      "secrets": [
-        {
-          "name": "DB_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:ap-southeast-1:975628797176:secret:laravel-db-password-feXnIh:password::"
-        }
+        {"name": "MAIL_FROM_NAME", "value": "Laravel"},
+        {"name": "DB_PASSWORD", "value": "LaravelProd2026!"}
       ]
     }
   ]

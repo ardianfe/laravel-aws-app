@@ -2,8 +2,8 @@
   "family": "laravel-aws-app",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
-  "cpu": "512",
-  "memory": "1024",
+  "cpu": "1024",
+  "memory": "2048",
   "executionRoleArn": "arn:aws:iam::975628797176:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
