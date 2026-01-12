@@ -30,6 +30,12 @@ Thumbs.db
 *.key
 AWSCLIV2.pkg
 
+# Removed deployment artifacts (cleaned up)
+# .ebextensions/ - removed (was Elastic Beanstalk)
+# .elasticbeanstalk/ - removed (was Elastic Beanstalk)
+# apprunner.yaml - removed (was App Runner experiment)
+# .platform.app.yaml - removed (was Platform.sh experiment)
+
 # IDE and OS files
 .vscode/
 .idea/

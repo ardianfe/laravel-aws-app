@@ -1,6 +1,10 @@
-# Laravel AWS App
+# Laravel Tryout API
 
-A Laravel application configured for AWS deployment with MySQL database and comprehensive testing setup.
+A Laravel API backend designed for online tryout applications with burst scaling capabilities on AWS ECS Fargate.
+
+## 🎯 Architecture: ECS Fargate + Auto Scaling
+
+**Optimized for burst traffic**: 1 → 1000+ concurrent users during tryout events.
 
 ## Prerequisites
 
