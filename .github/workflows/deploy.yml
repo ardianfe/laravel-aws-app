@@ -101,20 +101,22 @@ jobs:
         if ! aws ecs describe-services --cluster $CLUSTER_NAME --services $SERVICE_NAME --region $AWS_REGION --query 'services[0].serviceName' --output text | grep -q $SERVICE_NAME; then
           echo "Creating ECS service $SERVICE_NAME..."
           
-          # Get VPC and subnet info
-          VPC_ID=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=true" --query "Vpcs[0].VpcId" --output text --region $AWS_REGION)
-          SUBNET_IDS=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --query "Subnets[*].SubnetId" --output text --region $AWS_REGION)
-          SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=laravel-aws-app-ecs" "Name=vpc-id,Values=$VPC_ID" --query "SecurityGroups[0].GroupId" --output text --region $AWS_REGION)
-          TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --names laravel-aws-app-tg --region $AWS_REGION --query 'TargetGroups[0].TargetGroupArn' --output text)
+          # Use known working infrastructure values
+          SUBNET_1="subnet-0903459d034f25487"
+          SUBNET_2="subnet-0281fdb975f4d0565"
+          SECURITY_GROUP_ID="sg-088ec101df958bb59"
+          TARGET_GROUP_ARN="arn:aws:elasticloadbalancing:ap-southeast-1:975628797176:targetgroup/laravel-aws-app-tg/a8c36acd30b4e81e"
           
-          # Create the service without load balancer for now
+          # Create the service with load balancer
           aws ecs create-service \
             --cluster $CLUSTER_NAME \
             --service-name $SERVICE_NAME \
             --task-definition $TASK_DEFINITION:1 \
             --desired-count 1 \
             --launch-type FARGATE \
-            --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_IDS],securityGroups=[$SECURITY_GROUP_ID],assignPublicIp=ENABLED}" \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_1,$SUBNET_2],securityGroups=[$SECURITY_GROUP_ID],assignPublicIp=ENABLED}" \
+            --load-balancers "targetGroupArn=$TARGET_GROUP_ARN,containerName=laravel-app,containerPort=80" \
+            --health-check-grace-period-seconds 300 \
             --region $AWS_REGION
         else
           echo "Updating existing ECS service $SERVICE_NAME..."
