@@ -34,10 +34,10 @@
         {"name": "LOG_DEPRECATIONS_CHANNEL", "value": "null"},
         {"name": "LOG_LEVEL", "value": "info"},
         {"name": "DB_CONNECTION", "value": "mysql"},
-        {"name": "DB_HOST", "value": "laravel-aws-app-db.cluster-xyz.ap-southeast-1.rds.amazonaws.com"},
+        {"name": "DB_HOST", "value": "velo-prod-db.cfgmei0q2ik1.ap-southeast-1.rds.amazonaws.com"},
         {"name": "DB_PORT", "value": "3306"},
         {"name": "DB_DATABASE", "value": "laravel"},
-        {"name": "DB_USERNAME", "value": "laravel"},
+        {"name": "DB_USERNAME", "value": "admin"},
         {"name": "BROADCAST_DRIVER", "value": "log"},
         {"name": "CACHE_DRIVER", "value": "file"},
         {"name": "FILESYSTEM_DISK", "value": "local"},
@@ -60,7 +60,7 @@
       "secrets": [
         {
           "name": "DB_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:ap-southeast-1:975628797176:secret:laravel-db-password-xyz:password::"
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-1:975628797176:secret:laravel-db-password-feXnIh:password::"
         }
       ]
     }
