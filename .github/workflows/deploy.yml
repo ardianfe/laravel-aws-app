@@ -104,11 +104,11 @@ jobs:
         if ! aws ecs describe-services --cluster $CLUSTER_NAME --services $SERVICE_NAME --region $AWS_REGION --query 'services[0].serviceName' --output text | grep -q $SERVICE_NAME; then
           echo "Creating ECS service $SERVICE_NAME..."
           
-          # Use known working infrastructure values
+          # Staging environment infrastructure values
           SUBNET_1="subnet-0903459d034f25487"
           SUBNET_2="subnet-0281fdb975f4d0565"
           SECURITY_GROUP_ID="sg-088ec101df958bb59"
-          TARGET_GROUP_ARN="arn:aws:elasticloadbalancing:ap-southeast-1:975628797176:targetgroup/laravel-aws-app-tg/a8c36acd30b4e81e"
+          TARGET_GROUP_ARN="arn:aws:elasticloadbalancing:ap-southeast-1:975628797176:targetgroup/laravel-staging-tg/9abe6f3490e1c08e"
           
           # Create the service with load balancer
           aws ecs create-service \
@@ -197,11 +197,11 @@ jobs:
         SERVICE_NAME: laravel-aws-app-production
         TASK_DEFINITION: laravel-aws-app
       run: |
-        # Use known working infrastructure values for production
+        # Production environment infrastructure values
         SUBNET_1="subnet-0903459d034f25487"
         SUBNET_2="subnet-0281fdb975f4d0565"
         SECURITY_GROUP_ID="sg-088ec101df958bb59"
-        TARGET_GROUP_ARN="arn:aws:elasticloadbalancing:ap-southeast-1:975628797176:targetgroup/laravel-aws-app-tg/a8c36acd30b4e81e"
+        TARGET_GROUP_ARN="arn:aws:elasticloadbalancing:ap-southeast-1:975628797176:targetgroup/laravel-production-tg/947497e60f06367d"
         
         # Check if service exists, create if not
         if ! aws ecs describe-services --cluster $CLUSTER_NAME --services $SERVICE_NAME --region $AWS_REGION --query 'services[0].serviceName' --output text | grep -q $SERVICE_NAME; then
@@ -237,5 +237,5 @@ jobs:
       run: |
         echo "Running production health check..."
         sleep 30
-        curl -f http://laravel-aws-app-alb-1787439313.ap-southeast-1.elb.amazonaws.com/health || exit 1
+        curl -f http://laravel-production-alb-732343315.ap-southeast-1.elb.amazonaws.com/health || exit 1
         echo "Production health check passed!"
