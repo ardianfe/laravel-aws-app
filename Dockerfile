@@ -1,146 +1,100 @@
-FROM php:8.3-fpm
+############################################
+# Stage 1 — Build frontend assets
+############################################
+FROM node:18-alpine AS frontend-builder
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    libpng-dev \
-    libonig-dev \
-    libxml2-dev \
-    libsqlite3-dev \
-    sqlite3 \
-    zip \
-    unzip \
-    default-mysql-client \
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY resources ./resources
+COPY vite.config.* ./
+RUN npm run build
+
+
+############################################
+# Stage 2 — Install PHP dependencies
+############################################
+FROM composer:2 AS vendor-builder
+
+WORKDIR /app
+
+COPY composer.json composer.lock ./
+RUN composer install \
+    --no-dev \
+    --no-interaction \
+    --no-scripts \
+    --prefer-dist \
+    --optimize-autoloader
+
+COPY . .
+RUN composer dump-autoload --optimize
+
+
+############################################
+# Stage 3 — Production runtime
+############################################
+FROM php:8.3-fpm-alpine
+
+# Install system dependencies (minimal)
+RUN apk add --no-cache \
     nginx \
     supervisor \
-    && rm -rf /var/lib/apt/lists/*
+    curl \
+    icu-dev \
+    oniguruma-dev \
+    libxml2-dev \
+    libpng-dev \
+    zip \
+    unzip
 
 # Install PHP extensions
-RUN docker-php-ext-install pdo_mysql pdo_sqlite mbstring exif pcntl bcmath gd sockets
-
-# Get latest Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
-# Create system user to run Composer and Artisan Commands
-RUN useradd -G www-data,root -u 1000 -d /home/laravel laravel
-RUN mkdir -p /home/laravel/.composer && \
-    chown -R laravel:laravel /home/laravel
+RUN docker-php-ext-install \
+    pdo_mysql \
+    mbstring \
+    exif \
+    bcmath \
+    intl \
+    gd
 
 # Set working directory
 WORKDIR /var/www
 
-# Copy existing application directory contents
-COPY . /var/www
+# Copy app source
+COPY . .
 
-# Copy existing application directory permissions
-COPY --chown=laravel:laravel . /var/www
+# Copy vendor from builder
+COPY --from=vendor-builder /app/vendor ./vendor
 
-# Install Node.js for frontend assets
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
-    apt-get install -y nodejs
+# Copy built assets
+COPY --from=frontend-builder /app/public ./public
 
-# Fix git ownership issue and install dependencies
-RUN git config --global --add safe.directory /var/www
-RUN composer install --optimize-autoloader --no-dev --no-scripts
+# Copy PHP config
+COPY docker/php.ini /usr/local/etc/php/conf.d/app.ini
 
-# Install npm dependencies and build assets
-RUN npm install && npm run build
+# Copy Nginx config
+COPY docker/nginx.conf /etc/nginx/nginx.conf
 
-# Remove package discovery cache that references dev dependencies
-RUN rm -f /var/www/bootstrap/cache/packages.php /var/www/bootstrap/cache/services.php
+# Copy Supervisor config
+COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Set proper permissions
-RUN chown -R laravel:www-data /var/www
-RUN chmod -R 775 /var/www/storage /var/www/bootstrap/cache
-# Ensure database directory is writable for SQLite
-RUN chmod 775 /var/www/database && chmod 664 /var/www/database/database.sqlite || true
+# Create basic .env file
+RUN cp .env.example .env
 
-# Configure Nginx
-COPY <<EOF /etc/nginx/sites-available/default
-server {
-    listen 80;
-    server_name localhost;
-    root /var/www/public;
-    index index.php index.html;
+# Set permissions
+RUN chown -R www-data:www-data /var/www \
+    && chmod -R 755 /var/www/storage /var/www/bootstrap/cache
 
-    location / {
-        try_files \$uri \$uri/ /index.php?\$query_string;
-    }
+# Create directories for logs
+RUN mkdir -p /var/log/nginx /var/log/supervisor
 
-    location ~ \.php$ {
-        fastcgi_pass 127.0.0.1:9000;
-        fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-        include fastcgi_params;
-    }
-
-    location ~ /\.ht {
-        deny all;
-    }
-}
-EOF
-
-# Configure Supervisor
-COPY <<EOF /etc/supervisor/conf.d/supervisord.conf
-[supervisord]
-nodaemon=true
-
-[program:nginx]
-command=nginx -g "daemon off;"
-autostart=true
-autorestart=true
-stderr_logfile=/var/log/nginx/error.log
-stdout_logfile=/var/log/nginx/access.log
-
-[program:php-fpm]
-command=php-fpm
-autostart=true
-autorestart=true
-stderr_logfile=/var/log/php-fpm.log
-stdout_logfile=/var/log/php-fpm.log
-EOF
-
-# Create log directories
-RUN mkdir -p /var/log/nginx && \
-    touch /var/log/php-fpm.log && \
-    chown laravel:laravel /var/log/php-fpm.log
-
-# Expose port 80
+# Expose HTTP
 EXPOSE 80
 
-# Create startup script
-COPY <<EOF /usr/local/bin/start.sh
-#!/bin/bash
-# Create SQLite database if it doesn't exist
-touch /tmp/database.sqlite
-chmod 664 /tmp/database.sqlite
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=5s \
+  CMD curl -f http://localhost/ping || exit 1
 
-# Run database migrations
-php artisan migrate --force
-
-# Generate app key if not exists
-if [ ! -f .env ]; then
-    cp .env.example .env
-fi
-php artisan key:generate --force
-
-# Clear any existing cache that might cause issues
-php artisan config:clear
-php artisan route:clear
-php artisan view:clear
-
-# Clear package discovery cache to avoid dev dependency issues
-php artisan package:discover --ansi
-
-# Only cache config, avoid route caching for authentication compatibility
-php artisan config:cache
-
-# Start supervisor
-exec /usr/bin/supervisord
-EOF
-
-RUN chmod +x /usr/local/bin/start.sh
-
-# Start with custom script
-CMD ["/usr/local/bin/start.sh"]
+# Runtime initialization and startup
+CMD ["sh", "-c", "sed -i 's/DB_CONNECTION=mysql/DB_CONNECTION=sqlite/' .env && sed -i 's|DB_DATABASE=.*|DB_DATABASE=/tmp/database.sqlite|' .env && touch /tmp/database.sqlite && chmod 666 /tmp/database.sqlite && php artisan key:generate --force && php artisan migrate --force && exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf"]

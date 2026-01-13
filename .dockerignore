@@ -1,10 +1,8 @@
-node_modules
-npm-debug.log
-storage/logs/*
-bootstrap/cache/*
-.env*
 .git
+node_modules
 vendor
-composer.lock
-package-lock.json
-tests
+.env
+storage/logs
+storage/framework/cache
+storage/framework/sessions
+storage/framework/views
