@@ -22,16 +22,17 @@ Route::get('/test-auth', function () {
 });
 
 Route::get('/health', function () {
-    try {
-        DB::connection()->getPdo();
-        return response()->json([
-            'status' => 'ok', 
-            'database' => 'connected',
-            'timestamp' => now()->toISOString()
-        ]);
-    } catch (Exception $e) {
-        return response()->json(['status' => 'error'], 500);
-    }
+    return response()->json([
+        'status' => 'ok',
+        'timestamp' => now()->toISOString(),
+        'app' => 'Laravel'
+    ]);
+});
+
+// Simple text health check for ALB
+Route::get('/ping', function () {
+    return response('pong', 200)
+        ->header('Content-Type', 'text/plain');
 });
 
 Route::get('/dashboard', function () {
