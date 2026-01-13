@@ -36,8 +36,15 @@ COPY . /var/www
 # Copy existing application directory permissions
 COPY --chown=laravel:laravel . /var/www
 
+# Install Node.js for frontend assets
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs
+
 # Install dependencies
 RUN composer install --optimize-autoloader --no-dev
+
+# Install npm dependencies and build assets
+RUN npm install && npm run build
 
 # Set proper permissions
 RUN chown -R laravel:www-data /var/www
@@ -102,6 +109,20 @@ COPY <<EOF /usr/local/bin/start.sh
 # Create SQLite database if it doesn't exist
 touch /tmp/database.sqlite
 chmod 664 /tmp/database.sqlite
+
+# Run database migrations
+php artisan migrate --force
+
+# Generate app key if not exists
+if [ ! -f .env ]; then
+    cp .env.example .env
+fi
+php artisan key:generate --force
+
+# Clear and cache config
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
 
 # Start supervisor
 exec /usr/bin/supervisord
