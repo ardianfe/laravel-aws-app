@@ -40,15 +40,21 @@ COPY --chown=laravel:laravel . /var/www
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
     apt-get install -y nodejs
 
-# Install dependencies
-RUN composer install --optimize-autoloader --no-dev
+# Fix git ownership issue and install dependencies
+RUN git config --global --add safe.directory /var/www
+RUN composer install --optimize-autoloader --no-dev --no-scripts
 
 # Install npm dependencies and build assets
 RUN npm install && npm run build
 
+# Remove package discovery cache that references dev dependencies
+RUN rm -f /var/www/bootstrap/cache/packages.php /var/www/bootstrap/cache/services.php
+
 # Set proper permissions
 RUN chown -R laravel:www-data /var/www
 RUN chmod -R 775 /var/www/storage /var/www/bootstrap/cache
+# Ensure database directory is writable for SQLite
+RUN chmod 775 /var/www/database && chmod 664 /var/www/database/database.sqlite || true
 
 # Configure Nginx
 COPY <<EOF /etc/nginx/sites-available/default
@@ -119,10 +125,16 @@ if [ ! -f .env ]; then
 fi
 php artisan key:generate --force
 
-# Clear and cache config
+# Clear any existing cache that might cause issues
+php artisan config:clear
+php artisan route:clear
+php artisan view:clear
+
+# Clear package discovery cache to avoid dev dependency issues
+php artisan package:discover --ansi
+
+# Only cache config, avoid route caching for authentication compatibility
 php artisan config:cache
-php artisan route:cache
-php artisan view:cache
 
 # Start supervisor
 exec /usr/bin/supervisord

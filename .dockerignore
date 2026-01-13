@@ -1,0 +1,10 @@
+node_modules
+npm-debug.log
+storage/logs/*
+bootstrap/cache/*
+.env*
+.git
+vendor
+composer.lock
+package-lock.json
+tests
