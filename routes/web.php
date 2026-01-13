@@ -8,6 +8,19 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+// Force Docker rebuild - Authentication routes test
+Route::get('/test-auth', function () {
+    return response()->json([
+        'message' => 'Authentication system deployed successfully',
+        'timestamp' => now(),
+        'routes' => [
+            'login' => route('login'),
+            'register' => route('register'),
+            'dashboard' => '/dashboard'
+        ]
+    ]);
+});
+
 Route::get('/health', function () {
     try {
         DB::connection()->getPdo();
